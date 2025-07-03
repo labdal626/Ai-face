@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Mood Tracker Ekspresi Wajah</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;700&display=swap');
+  body, html {
+    margin: 0; padding: 0; height: 100%;
+    font-family: 'Poppins', sans-serif;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    color: white;
+    overflow: hidden;
+    transition: background 1s ease;
+  }
+  h1 {
+    margin-bottom: 0.5rem;
+    font-weight: 700;
+    text-shadow: 1px 1px 5px #0008;
+  }
+  #videoContainer {
+    position: relative;
+    width: 360px;
+    height: 270px;
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 0 30px 5px rgba(255 255 255 / 0.3);
+    margin-bottom: 1rem;
+  }
+  video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transform: scaleX(-1);
+  }
+  canvas {
+    position: absolute;
+    top: 0; left: 0;
+  }
+  #status {
+    font-size: 1.3rem;
+    margin-bottom: 0.5rem;
+    text-align: center;
+    min-height: 1.5em;
+    text-shadow: 1px 1px 8px #0009;
+  }
+  #message {
+    max-width: 360px;
+    font-style: italic;
+    text-align: center;
+    line-height: 1.4;
+    text-shadow: 1px 1px 6px #000a;
+  }
+  #particle-canvas {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100vw; height: 100vh;
+    pointer-events: none;
+    z-index: 0;
+  }
+</style>
+</head>
+<body>
+
+<h1>😊 Mood Tracker Ekspresi Wajah</h1>
+<div id="videoContainer">
+  <video id="video" autoplay muted></video>
+  <canvas id="overlay"></canvas>
+</div>
+<div id="status">Memulai deteksi mood...</div>
+<div id="message"></div>
+
+<canvas id="particle-canvas"></canvas>
+
+<!-- Musik -->
+<audio id="audio" autoplay loop></audio>
+
+<script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.10.2/dist/face-api.min.js"></script>
+<script>
+  const video = document.getElementById('video');
+  const overlay = document.getElementById('overlay');
+  const overlayCtx = overlay.getContext('2d');
+  const statusEl = document.getElementById('status');
+  const messageEl = document.getElementById('message');
+  const audio = document.getElementById('audio');
+  const particleCanvas = document.getElementById('particle-canvas');
+  const pCtx = particleCanvas.getContext('2d');
+
+  async function setupCamera() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: {} });
+      video.srcObject = stream;
+      return new Promise(res => video.onloadedmetadata = () => res());
+    } catch(e) {
+      statusEl.textContent = 'Gagal akses kamera, tolong izinkan akses.';
+      throw e;
+    }
+  }
+
+  async function loadModels() {
+    // Load model face detection dan ekspresi
+    await faceapi.nets.tinyFaceDetector.loadFromUri('https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/');
+    await faceapi.nets.faceExpressionNet.loadFromUri('https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/');
+  }
+
+  function resizeOverlay() {
+    overlay.width = video.videoWidth;
+    overlay.height = video.videoHeight;
+  }
+
+  // Mood info
+  let currentMood = 'netral';
+
+  // Musik untuk mood
+  const moodMusic = {
+    senang: 'https://cdn.pixabay.com/download/audio/2022/03/08/audio_b430bd6a53.mp3?filename=upbeat-inspiring-instrumental-background-music-11232.mp3',
+    sedih: 'https://cdn.pixabay.com/download/audio/2021/10/26/audio_8e6e84f17c.mp3?filename=slow-emotional-piano-10723.mp3',
+    netral: 'https://cdn.pixabay.com/download/audio/2022/02/25/audio_072bd4fc1b.mp3?filename=ambient-technology-background-10773.mp3'
+  };
+
+  function updateBackgroundAndMusic(mood) {
+    if (mood === currentMood) return; // no change
+    currentMood = mood;
+    if (mood === 'senang') {
+      document.body.style.background = 'linear-gradient(135deg, #56ab2f, #a8e063)'; // green
+      messageEl.textContent = 'Kamu terlihat bahagia! Terus pertahankan semangatmu! 🌞';
+      audio.src = moodMusic.senang;
+    } else if (mood === 'sedih') {
+      document.body.style.background = 'linear-gradient(135deg, #614385, #516395)'; // purple-blue
+      messageEl.textContent = 'Cobalah untuk istirahat dan tenangkan pikiran. 🌧️';
+      audio.src = moodMusic.sedih;
+    } else {
+      document.body.style.background = 'linear-gradient(135deg, #667eea, #764ba2)'; // netral biru
+      messageEl.textContent = 'Tetap fokus dan jalani harimu dengan tenang. 🧘‍♂️';
+      audio.src = moodMusic.netral;
+    }
+    audio.volume = 0.3;
+    audio.play();
+  }
+
+  // Partikel damai mengalir untuk mood senang
+  class Particle {
+    constructor(x,y, color) {
+      this.x = x;
+      this.y = y;
+      this.size = Math.random() * 3 + 1;
+      this.speedX = (Math.random() - 0.5) * 0.7;
+      this.speedY = (Math.random() - 0.5) * 0.7;
+      this.color = color;
+      this.life = 150;
+    }
+    update() {
+      this.x += this.speedX;
+      this.y += this.speedY;
+      this.life--;
+      if (this.life < 50) this.size *= 0.95;
+    }
+    draw() {
+      pCtx.beginPath();
+      pCtx.fillStyle = this.color;
+      pCtx.shadowColor = this.color;
+      pCtx.shadowBlur = 10;
+      pCtx.arc(this.x, this.y, this.size, 0, Math.PI*2);
+      pCtx.fill();
+    }
+  }
+  let particles = [];
+  function emitParticles(mood) {
+    if(mood !== 'senang') return; // partikel hanya saat senang
+    for(let i=0; i<3; i++){
+      particles.push(new Particle(
+        Math.random()*window.innerWidth,
+        Math.random()*window.innerHeight,
+        'rgba(255,255,255,0.8)'
+      ));
+    }
+  }
+  function animateParticles(){
+    pCtx.clearRect(0,0, window.innerWidth, window.innerHeight);
+    particles.forEach((p,i) => {
+      p.update();
+      p.draw();
+      if(p.life <= 0 || p.size < 0.1) particles.splice(i,1);
+    });
+    requestAnimationFrame(animateParticles);
+  }
+  animateParticles();
+
+  async function run() {
+    await loadModels();
+    await setupCamera();
+    resizeOverlay();
+
+    const displaySize = { width: video.videoWidth, height: video.videoHeight };
+    faceapi.matchDimensions(overlay, displaySize);
+
+    statusEl.textContent = 'Mendeteksi ekspresi...';
+
+    setInterval(async () => {
+      const detections = await faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions()).withFaceExpressions();
+      overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
+
+      if (detections.length > 0) {
+        const resizedDetections = faceapi.resizeResults(detections, displaySize);
+        resizedDetections.forEach(detection => {
+          const box = detection.detection.box;
+          overlayCtx.strokeStyle = 'white';
+          overlayCtx.lineWidth = 2;
+          overlayCtx.strokeRect(box.x, box.y, box.width, box.height);
+
+          const expressions = detection.expressions;
+          const maxExp = Object.entries(expressions).reduce((a,b) => a[1] > b[1] ? a : b);
+          const mood = (maxExp[0] === 'happy' && maxExp[1] > 0.6) ? 'senang' :
+                       (maxExp[0] === 'sad' && maxExp[1] > 0.4) ? 'sedih' : 'netral';
+
+          statusEl.textContent = `Mood terdeteksi: ${mood.toUpperCase()}`;
+
+          updateBackgroundAndMusic(mood);
+          emitParticles(mood);
+        });
+      } else {
+        statusEl.textContent = 'Wajah tidak terdeteksi, coba kembali ke depan kamera :)';
+        updateBackgroundAndMusic('netral');
+      }
+    }, 1000);
+  }
+
+  // Pasang ukuran canvas partikel dan overlay tepat
+  function resize() {
+    particleCanvas.width = window.innerWidth;
+    particleCanvas.height = window.innerHeight;
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  run();
+</script>
+
+</body>
+</html>
